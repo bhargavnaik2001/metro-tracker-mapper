@@ -27,158 +27,225 @@
             background: #f4f4f4;
             padding: 10px;
             border: 1px solid #ccc;
+            max-height: 200px;
+            overflow: auto;
         }
     </style>
 </head>
 
 <body>
-
     <div id="controls">
         <label>Upload Map Image: <input type="file" id="mapUploader" accept="image/*" /></label><br><br>
-        <button onclick="toggleRectangles()">Toggle Rectangles</button>
-        <button onclick="undoLastRectangle()">Undo Last Rectangle</button>
-        <button onclick="clearRectangles()">Clear All Rectangles</button>
+        <label>Export File Name: <input type="text" id="exportFileName" value="safezones" /></label>
+        <button id="toggleRectanglesBtn">Toggle Rectangles</button>
+        <button id="undoRectangleBtn">Undo Rectangle</button>
+        <button id="clearAllBtn">Clear All</button>
+        <button id="exportBtn">Export</button>
+        <br><br>
+        <label>Add Beacon (Name): <input type="text" id="beaconName" /></label>
+        <button id="dropBeaconBtn">Drop Beacon Pin</button>
     </div>
 
     <canvas id="mapCanvas"></canvas>
 
     <h3>Safe Zone Data (x, y, width, height):</h3>
     <div id="safeZones"></div>
-    <br><br>
-    <label>Export File Name: <input type="text" id="exportFileName" value="safezones" /></label>
-    <button onclick="exportSafeZones()">Export Safe Zones</button>
 
     <script>
-        const canvas = document.getElementById('mapCanvas');
-        const ctx = canvas.getContext('2d');
-        const mapUploader = document.getElementById('mapUploader');
-        const safeZonesDisplay = document.getElementById('safeZones');
+        document.addEventListener("DOMContentLoaded", function () {
+            const canvas = document.getElementById('mapCanvas');
+            const ctx = canvas.getContext('2d');
+            const mapUploader = document.getElementById('mapUploader');
+            const safeZonesDisplay = document.getElementById('safeZones');
 
-        let mapImage = new Image();
-        let imageLoaded = false;
-        let showRectangles = true;
-        let safeZones = [];
+            // Buttons
+            const toggleRectanglesBtn = document.getElementById('toggleRectanglesBtn');
+            const undoRectangleBtn = document.getElementById('undoRectangleBtn');
+            const clearAllBtn = document.getElementById('clearAllBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            const dropBeaconBtn = document.getElementById('dropBeaconBtn');
 
-        let isDrawing = false;
-        let startX, startY;
-        let currentRect = null;
+            let mapImage = new Image();
+            let imageLoaded = false;
+            let showRectangles = true;
 
-        mapUploader.addEventListener('change', function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
+            let safeZones = [];
+            let beacons = [];
 
-            const reader = new FileReader();
-            reader.onload = function (event) {
-                mapImage.onload = () => {
-                    canvas.width = mapImage.width;
-                    canvas.height = mapImage.height;
-                    imageLoaded = true;
-                    safeZones = [];
-                    redraw();
-                };
-                mapImage.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
+            let isDrawing = false;
+            let startX = 0, startY = 0;
+            let currentRect = null;
 
-        canvas.addEventListener('mousedown', function (e) {
-            if (!imageLoaded) return;
-            isDrawing = true;
-            const rect = canvas.getBoundingClientRect();
-            startX = e.clientX - rect.left;
-            startY = e.clientY - rect.top;
-        });
+            let selectedBeaconIndex = -1;
+            let placingBeacon = false;
 
-        canvas.addEventListener('mousemove', function (e) {
-            if (!isDrawing || !imageLoaded) return;
-            const rect = canvas.getBoundingClientRect();
-            const currentX = e.clientX - rect.left;
-            const currentY = e.clientY - rect.top;
+            function redraw() {
+                if (!imageLoaded || !ctx) return;
 
-            currentRect = {
-                x: Math.min(startX, currentX),
-                y: Math.min(startY, currentY),
-                width: Math.abs(currentX - startX),
-                height: Math.abs(currentY - startY),
-            };
-            redraw();
-        });
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(mapImage, 0, 0, canvas.width, canvas.height);
 
-        canvas.addEventListener('mouseup', function () {
-            if (isDrawing && currentRect && imageLoaded) {
-                safeZones.push(currentRect);
-                updateSafeZoneDisplay();
-                currentRect = null;
-                isDrawing = false;
-                redraw();
-            }
-        });
+                if (showRectangles) {
+                    ctx.strokeStyle = 'limegreen';
+                    ctx.lineWidth = 2;
+                    safeZones.forEach(rect => {
+                        ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+                    });
 
-        function redraw() {
-            if (!imageLoaded) return;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(mapImage, 0, 0, canvas.width, canvas.height);
-
-            if (showRectangles) {
-                ctx.strokeStyle = 'limegreen';
-                ctx.lineWidth = 2;
-                safeZones.forEach(rect => {
-                    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-                });
-
-                if (currentRect) {
-                    ctx.strokeStyle = 'blue';
-                    ctx.strokeRect(currentRect.x, currentRect.y, currentRect.width, currentRect.height);
+                    if (currentRect) {
+                        ctx.strokeStyle = 'blue';
+                        ctx.strokeRect(currentRect.x, currentRect.y, currentRect.width, currentRect.height);
+                    }
                 }
+
+                beacons.forEach(beacon => {
+                    ctx.beginPath();
+                    ctx.arc(beacon.x, beacon.y, 6, 0, Math.PI * 2);
+                    ctx.fillStyle = 'red';
+                    ctx.fill();
+                    ctx.font = "12px Arial";
+                    ctx.fillText(beacon.name, beacon.x + 8, beacon.y - 8);
+                });
             }
-        }
 
-        function updateSafeZoneDisplay() {
-            safeZonesDisplay.textContent = safeZones.map(r => {
-                return `x: ${Math.round(r.x)}, y: ${Math.round(r.y)}, width: ${Math.round(r.width)}, height: ${Math.round(r.height)}`;
-            }).join('\n');
-        }
+            function updateSafeZoneDisplay() {
+                safeZonesDisplay.textContent = safeZones.map(r =>
+                    `x: ${Math.round(r.x)}, y: ${Math.round(r.y)}, width: ${Math.round(r.width)}, height: ${Math.round(r.height)}`
+                ).join('\n');
+            }
 
-        function toggleRectangles() {
-            showRectangles = !showRectangles;
-            redraw();
-        }
+            mapUploader.addEventListener('change', function (e) {
+                const file = e.target.files[0];
+                if (!file) return;
 
-        function clearRectangles() {
-            safeZones = [];
-            updateSafeZoneDisplay();
-            redraw();
-        }
-        function undoLastRectangle() {
-            if (safeZones.length > 0) {
-                safeZones.pop();
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    mapImage.onload = () => {
+                        canvas.width = mapImage.width;
+                        canvas.height = mapImage.height;
+                        imageLoaded = true;
+                        safeZones = [];
+                        beacons = [];
+                        redraw();
+                    };
+                    mapImage.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+
+            canvas.addEventListener('mousedown', function (e) {
+                if (!imageLoaded) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Drag beacon
+                for (let i = beacons.length - 1; i >= 0; i--) {
+                    const b = beacons[i];
+                    if (Math.hypot(x - b.x, y - b.y) < 10) {
+                        selectedBeaconIndex = i;
+                        return;
+                    }
+                }
+
+                if (placingBeacon) {
+                    const name = document.getElementById("beaconName").value.trim();
+                    if (name) {
+                        beacons.push({ name, x, y });
+                        placingBeacon = false;
+                        redraw();
+                    } else {
+                        alert("Enter a name for the beacon.");
+                    }
+                    return;
+                }
+
+                isDrawing = true;
+                startX = x;
+                startY = y;
+                currentRect = null;
+            });
+
+            canvas.addEventListener('mousemove', function (e) {
+                if (!imageLoaded) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (isDrawing) {
+                    currentRect = {
+                        x: Math.min(startX, x),
+                        y: Math.min(startY, y),
+                        width: Math.abs(x - startX),
+                        height: Math.abs(y - startY)
+                    };
+                    redraw();
+                }
+
+                if (selectedBeaconIndex !== -1) {
+                    beacons[selectedBeaconIndex].x = x;
+                    beacons[selectedBeaconIndex].y = y;
+                    redraw();
+                }
+            });
+
+            canvas.addEventListener('mouseup', function () {
+                if (isDrawing && currentRect) {
+                    safeZones.push(currentRect);
+                    updateSafeZoneDisplay();
+                    currentRect = null;
+                }
+
+                isDrawing = false;
+                selectedBeaconIndex = -1;
+                redraw();
+            });
+
+            toggleRectanglesBtn.addEventListener('click', function () {
+                showRectangles = !showRectangles;
+                redraw();
+            });
+
+            undoRectangleBtn.addEventListener('click', function () {
+                if (safeZones.length > 0) {
+                    safeZones.pop();
+                    updateSafeZoneDisplay();
+                    redraw();
+                }
+            });
+
+            clearAllBtn.addEventListener('click', function () {
+                safeZones = [];
+                beacons = [];
                 updateSafeZoneDisplay();
                 redraw();
-            }
-        }
-        function exportSafeZones() {
-            if (safeZones.length === 0) {
-                alert("No safe zones to export.");
-                return;
-            }
+            });
 
-            const fileName = document.getElementById("exportFileName").value.trim() || "safezones";
-            const dataStr = JSON.stringify(safeZones, null, 2); // pretty JSON
-            const blob = new Blob([dataStr], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
+            exportBtn.addEventListener('click', function () {
+                const fileName = document.getElementById("exportFileName").value.trim() || "mapdata";
+                const data = {
+                    mapWidth: canvas.width,
+                    mapHeight: canvas.height,
+                    safeZones,
+                    beacons
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = fileName + ".json";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
 
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = fileName + ".json";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        }
-
-
+            dropBeaconBtn.addEventListener('click', function () {
+                placingBeacon = true;
+                alert("Click on the map to place the beacon.");
+            });
+        });
     </script>
-
 </body>
 
 </html>
