@@ -42,8 +42,14 @@
         <button id="clearAllBtn">Clear All</button>
         <button id="exportBtn">Export</button>
         <br><br>
+        <label>Station ID: <input type="text" id="stationId" placeholder="e.g., andheri" /></label><br>
+        <label>Station Name: <input type="text" id="stationName"
+                placeholder="e.g., Andheri Metro Station" /></label><br><br>
+
         <label>Add Beacon (Name): <input type="text" id="beaconName" /></label>
+        <label>MAC Address: <input type="text" id="beaconMac" placeholder="AA:BB:CC:DD:EE:FF" /></label>
         <button id="dropBeaconBtn">Drop Beacon Pin</button>
+
     </div>
 
     <canvas id="mapCanvas"></canvas>
@@ -150,12 +156,13 @@
 
                 if (placingBeacon) {
                     const name = document.getElementById("beaconName").value.trim();
-                    if (name) {
-                        beacons.push({ name, x, y });
+                    const mac = document.getElementById("beaconMac").value.trim();
+                    if (name && mac) {
+                        beacons.push({ id: name, mac, x, y });
                         placingBeacon = false;
                         redraw();
                     } else {
-                        alert("Enter a name for the beacon.");
+                        alert("Enter both Beacon Name and MAC Address.");
                     }
                     return;
                 }
@@ -223,12 +230,26 @@
 
             exportBtn.addEventListener('click', function () {
                 const fileName = document.getElementById("exportFileName").value.trim() || "mapdata";
+                const stationId = document.getElementById("stationId").value.trim();
+                const stationName = document.getElementById("stationName").value.trim();
+
+                if (!stationId || !stationName) {
+                    alert("Please enter both Station ID and Station Name.");
+                    return;
+                }
+
                 const data = {
+                    stationId,
+                    stationName,
                     mapWidth: canvas.width,
                     mapHeight: canvas.height,
-                    safeZones,
-                    beacons
+                    beacons,
+                    safeZones: safeZones.map((z, i) => ({
+                        ...z,
+                        name: `Zone ${i + 1}`
+                    }))
                 };
+
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
@@ -242,8 +263,9 @@
 
             dropBeaconBtn.addEventListener('click', function () {
                 placingBeacon = true;
-                alert("Click on the map to place the beacon.");
+                alert("Click on the map to place the beacon. Make sure name and MAC are filled.");
             });
+
         });
     </script>
 </body>
